@@ -1,4 +1,33 @@
 (function () {
+
+  var time = Date.now()
+  var endpoint = "/api/realtime"
+  function apiCall(data, callback) {
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: data
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (response) {
+      if( sendTime < time ){
+        console.log("Obsolete data ", sendTime, time)
+        return
+      }
+      time = sendTime
+      callback(response.results)
+    }).catch(e => {
+      console.log("Error", e)
+    })
+  }
+
+
+
+
+
+
+
+
   // The width and height of the captured photo. We will set the
   // width to the value defined here, but the height will be
   // calculated based on the aspect ratio of the input stream.
@@ -18,7 +47,6 @@
   var canvas = null;
   var canvas2 = null;
   var photo = null;
-  var time = Date.now()
 
   function startup() {
     video = document.getElementById('video');
@@ -73,28 +101,23 @@
       }
     }, false);
     
-    setInterval(() => takepicture(2), 800);
+    setInterval(() => {
+      data = takepicture(2)
+      analyzePicture(data)
+    }, 1000);
 
     clearphoto();
   }
-
-  // Fill the photo with an indication that none has been
-  // captured.
-
+  
   function clearphoto() {
     var context = canvas.getContext('2d');
     context.fillStyle = "#AAA";
     context.fillRect(0, 0, canvas.width, canvas.height);
-
-    var data = canvas.toDataURL('image/png').replace(/^data:image\/(png|jpg);base64,/, '');
-    // photo.setAttribute('src', data);
   }
 
-  // Capture a photo by fetching the current contents of the video
-  // and drawing it into a canvas, then converting that to a PNG
-  // format data URL. By drawing it on an offscreen canvas and then
-  // drawing that to the screen, we can change its size and/or apply
-  // other changes before drawing it.
+  function clearRect(canvas) {
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  }
 
   function takepicture(endpoint) {
     if (width && height) {
@@ -104,56 +127,83 @@
       ctx.translate(width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, width, height);
-      var data = canvas2.toDataURL('image/png').replace(/^data:image\/(png|jpg);base64,/, '');
-      const sendTime = Date.now();
-      fetch("/api/realtime", {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: data
-      }).then(function (r) { return r.json(); }).then(function (response) {
-        if( sendTime < time ){
-          console.log("Obsolete data ",sendTime, time)
-          return
-        }
-        time = sendTime
-        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
-        ctx = canvas.getContext('2d')
-        response.results.forEach(each => {
-          console.log(each.name, each.box, each.score)
-          each.box.top -= 150;
-          each.box.bottom -= 150;
+      return canvas2.toDataURL('image/png').replace(/^data:image\/(png|jpg);base64,/, '')
 
-          ctx.beginPath();
-          ctx.lineWidth = "2";
-          ctx.strokeStyle = "rgba(230, 196, 34, 0.8)";
-          ctx.rect(each.box.left, each.box.top, each.box.right - each.box.left, each.box.bottom - each.box.top);
-          ctx.stroke();
-          ctx.closePath();
-
-
-          ctx.beginPath();
-          var label = each.name + " (" + Math.round(each.score * 100) + "%)"
-          ctx.fillStyle = "rgba(230, 196, 34, 0.8)";
-          ctx.rect(each.box.left - 1, each.box.top - 22, label.length * 8 + 15, 22);
-          ctx.fill()
-          ctx.closePath();
-
-
-          ctx.beginPath();
-          ctx.font = "16px Microsoft JhengHei UI"
-          ctx.fillStyle = "white"
-          ctx.fillText(label, each.box.left + 5, each.box.top - 6)
-          ctx.closePath();
-
-        })
-        drawRect = response.results
-      }).catch(e => {
-        console.log("Error", e)
-      })
-      // photo.setAttribute('src', data);
     } else {
       clearphoto();
     }
+  }
+
+  function renaderResults(results) {
+
+    drawBoundingBox = (ctx, box) => {
+      // Draw Bounding Box
+      ctx.beginPath();
+      ctx.lineWidth = box.borderWidth;
+      ctx.strokeStyle = box.borderColor;
+      ctx.rect(box.left, box.top, box.width, box.height);
+      ctx.stroke();
+      ctx.closePath();
+    }
+    drawLabel = (ctx, label) => {
+      // Draw Label
+      ctx.beginPath();
+      ctx.font = label.textFontStyle
+      ctx.fillStyle = label.textColor
+      ctx.fillText(label.text, label.textLeft, label.textTop)
+      ctx.closePath();
+    }
+
+    drawLabelRect = (ctx, labe) => {
+      // Draw Label Rect
+      ctx.beginPath()
+      ctx.fillStyle = label.rectColor
+      ctx.rect(label.rectLeft, label.rectTop, label.rectWidth, label.rectHeight)
+      ctx.fill()
+      ctx.closePath()
+    }
+
+    ctx = canvas.getContext('2d')
+    results.forEach(each => {
+      console.log(each.name, each.box, each.score)
+      each.box.top -= 150;
+      each.box.bottom -= 150;
+
+      var boundingBox = {
+        left: each.box.left, 
+        top: each.box.top, 
+        width: each.box.right - each.box.left, 
+        height: each.box.bottom - each.box.top,
+        borderColor: "rgba(230, 196, 34, 0.8)",
+        borderWidth: "2"
+      }
+
+      var label = {
+        text: each.name + " (" + Math.round(each.score * 100) + "%)",
+        textLeft: each.box.left + 5,
+        textTop: each.box.top -6,
+        textColor: "white",
+        textFontStyle: "16px Microsoft JhengHei UI",
+        rectLeft: each.box.left - 1,
+        rectTop: each.box.top - 22,
+        rectWidth: (each.name + " (" + Math.round(each.score * 100) + "%)").length * 8 + 15,
+        rectHeight: 22,
+        rectColor: "rgba(230, 196, 34, 0.8)"
+      }
+
+      drawBoundingBox(ctx, boundingBox)
+      drawLabelRect(ctx, label)
+      drawLabel(ctx, label)
+
+    })
+  }
+
+  function analyzePicture(data) {
+    const sendTime = Date.now();
+    apiCall(data, (results) => {
+      clearRect(canvas)
+      renaderResults(results)
+    });
   }
 
   // Set up our event listener to run the startup process
