@@ -198,7 +198,7 @@
         toastr.error(ABNORMAL_TEXT, ABNORMAL_TITLE)        
       }
 
-      const theata = Math.floor((bound.height/bound.width) * 100) / 100
+      const theata = Math.floor((each.box.height/each.box.width) * 100) / 100
       
       const ctx = canvas.getContext('2d')
       const labelText = `${each.box.name} (${each.box.score}%), tanθ=(${theata})`
