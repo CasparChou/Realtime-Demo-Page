@@ -201,7 +201,7 @@
       const theata = Math.floor((each.box.height/each.box.width) * 100) / 100
       
       const ctx = canvas.getContext('2d')
-      const labelText = `${each.box.name} (${each.box.score}%), tanθ=(${theata})`
+      const labelText = `${each.box.name} (${each.box.score}%), 傾斜=(${theata})`
       const label = {
         text: labelText,
         textLeft: each.box.left + 5,
