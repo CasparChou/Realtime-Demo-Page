@@ -1,21 +1,31 @@
 (function () {
 
+  const CONFIDENCE = 40
+  const SNATSHOT_MS = 800
+  const ENDPOINT = "CUSTOM VISION ENDPOINT"
+  const HEADER = { 
+    "Content-Type": "application/octet-stream",
+    "Prediction-Key": "PREDICTION KEY"
+  }
+  const ABNORMAL_TEXT = "Something is falling, please check!"
+  const ABNORMAL_TITLE = "DANGER!"
+
   var time = Date.now()
-  var endpoint = "/api/realtime"
   function apiCall(data, callback) {
-    fetch(endpoint, {
+    const sendTime = Date.now();
+    fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/octet-stream" },
+      headers: HEADER,
       body: data
     })
     .then(function (r) { return r.json(); })
     .then(function (response) {
       if( sendTime < time ){
-        console.log("Obsolete data ", sendTime, time)
+        // console.log("Obsolete data ", sendTime, time)
         return
       }
       time = sendTime
-      callback(response.results)
+      callback(response)
     }).catch(e => {
       console.log("Error", e)
     })
@@ -82,9 +92,6 @@
       if (!streaming) {
         height = video.videoHeight / (video.videoWidth / width);
 
-        // Firefox currently has a bug where the height can't be read from
-        // the video, so we will make assumptions if this happens.
-
         if (isNaN(height)) {
           height = width / (4 / 3);
         }
@@ -101,10 +108,10 @@
       }
     }, false);
     
+    takepicture(analyzePicture)
     setInterval(() => {
-      data = takepicture(2)
-      analyzePicture(data)
-    }, 1000);
+      takepicture(analyzePicture)
+    }, SNATSHOT_MS);
 
     clearphoto();
   }
@@ -119,7 +126,7 @@
     canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  function takepicture(endpoint) {
+  function takepicture(callback) {
     if (width && height) {
       canvas2.width = width;
       canvas2.height = height;
@@ -127,7 +134,7 @@
       ctx.translate(width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, width, height);
-      return canvas2.toDataURL('image/png').replace(/^data:image\/(png|jpg);base64,/, '')
+      return canvas2.toBlob(callback, 'image/png')
 
     } else {
       clearphoto();
@@ -136,8 +143,8 @@
 
   function renaderResults(results) {
 
+    // Draw Bounding Box
     drawBoundingBox = (ctx, box) => {
-      // Draw Bounding Box
       ctx.beginPath();
       ctx.lineWidth = box.borderWidth;
       ctx.strokeStyle = box.borderColor;
@@ -145,8 +152,9 @@
       ctx.stroke();
       ctx.closePath();
     }
+
+    // Draw Label
     drawLabel = (ctx, label) => {
-      // Draw Label
       ctx.beginPath();
       ctx.font = label.textFontStyle
       ctx.fillStyle = label.textColor
@@ -154,8 +162,8 @@
       ctx.closePath();
     }
 
-    drawLabelRect = (ctx, labe) => {
-      // Draw Label Rect
+    // Draw Label Rect
+    drawLabelRect = (ctx, label) => {
       ctx.beginPath()
       ctx.fillStyle = label.rectColor
       ctx.rect(label.rectLeft, label.rectTop, label.rectWidth, label.rectHeight)
@@ -163,32 +171,54 @@
       ctx.closePath()
     }
 
-    ctx = canvas.getContext('2d')
-    results.forEach(each => {
-      console.log(each.name, each.box, each.score)
-      each.box.top -= 150;
-      each.box.bottom -= 150;
-
-      var boundingBox = {
-        left: each.box.left, 
-        top: each.box.top, 
-        width: each.box.right - each.box.left, 
-        height: each.box.bottom - each.box.top,
-        borderColor: "rgba(230, 196, 34, 0.8)",
-        borderWidth: "2"
+    // Convert data struct
+    conversion = (origin) => {
+      return {
+        left: origin.boundingBox.left * width,
+        top: origin.boundingBox.top * height + 50,
+        width: origin.boundingBox.width * width,
+        height: origin.boundingBox.height * height - 100,
+        name: origin.tagName,
+        score: Math.round(origin.probability * 100)
       }
+    }
 
-      var label = {
-        text: each.name + " (" + Math.round(each.score * 100) + "%)",
+    // Abnormality Detect
+    abnormalCheck = (bound) => {
+      return (bound.height/bound.width) < 0.55
+    }
+
+    results.predictions.forEach(each => {
+      each['box'] = conversion(each)
+      
+      if (each.box.score < CONFIDENCE) return
+      console.log(each.box)
+
+      if (abnormalCheck(each.box)) {
+        toastr.error(ABNORMAL_TEXT, ABNORMAL_TITLE)        
+      }
+      
+      const ctx = canvas.getContext('2d')
+      const labelText = `${each.box.name} (${each.box.score}%)`
+      const label = {
+        text: labelText,
         textLeft: each.box.left + 5,
         textTop: each.box.top -6,
         textColor: "white",
         textFontStyle: "16px Microsoft JhengHei UI",
         rectLeft: each.box.left - 1,
         rectTop: each.box.top - 22,
-        rectWidth: (each.name + " (" + Math.round(each.score * 100) + "%)").length * 8 + 15,
+        rectWidth: labelText.length * 8 + 15, // [JhengHei Font] Each font size = 8
         rectHeight: 22,
-        rectColor: "rgba(230, 196, 34, 0.8)"
+        rectColor: !abnormalCheck(each.box) ? "rgba(161, 230, 34, 0.8)" : "rgba(230, 92, 34, 0.8)",
+      }
+      const boundingBox = {
+        left: each.box.left, 
+        top: each.box.top, 
+        width: each.box.width, 
+        height: each.box.height,
+        borderColor: !abnormalCheck(each.box) ? "rgba(161, 230, 34, 0.8)" : "rgba(230, 92, 34, 0.8)", //"rgba(230, 196, 34, 0.8)",
+        borderWidth: "2"
       }
 
       drawBoundingBox(ctx, boundingBox)
@@ -199,7 +229,6 @@
   }
 
   function analyzePicture(data) {
-    const sendTime = Date.now();
     apiCall(data, (results) => {
       clearRect(canvas)
       renaderResults(results)
