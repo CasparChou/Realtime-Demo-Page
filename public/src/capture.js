@@ -3,7 +3,7 @@
   const CONFIDENCE = 40
   const SNATSHOT_MS = 800
   const ENDPOINT = "CUSTOM VISION ENDPOINT"
-  const HEADER = { 
+  const HEADER = {
     "Content-Type": "application/octet-stream",
     "Prediction-Key": "PREDICTION KEY"
   }
@@ -134,7 +134,7 @@
       ctx.translate(width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(video, 0, 0, width, height);
-      return canvas2.toBlob(callback, 'image/png')
+      return callback(dataURLtoBlob(canvas2.toDataURL('image/png')))
 
     } else {
       clearphoto();
